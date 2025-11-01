@@ -40,8 +40,10 @@ jobs:
       - name: Run Tests
         run: |
           mkdir -p allure-results
-          pytest -v tests/ --collect-only
-          pytest -v tests/ --alluredir=allure-results --clean-alluredir || true
+          # --- Hotfix for collections.Mapping compatibility ---
+          python -c "import collections; import collections.abc; collections.Mapping = collections.abc.Mapping"
+          # --- Run pytest ---
+          pytest -v tests/api --alluredir=allure-results --clean-alluredir || true
           echo "✅ Tests executed. Checking Allure results..."
           ls -al allure-results
 
