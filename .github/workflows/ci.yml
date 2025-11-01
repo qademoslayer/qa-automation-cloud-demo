@@ -27,13 +27,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-html allure-pytest pytest-allure-adaptor || true
 
-      # 4️⃣ Install Allure Commandline
+      # 4️⃣ Install Allure Commandline (Stable Maven Source)
       - name: Install Allure Commandline
         run: |
           sudo apt-get update
-          sudo apt-get install -y openjdk-17-jre wget
-          wget https://github.com/allure-framework/allure2/releases/latest/download/allure-2.29.0.tgz
-          sudo tar -zxvf allure-2.29.0.tgz -C /opt/
+          sudo apt-get install -y openjdk-17-jre wget unzip
+          wget https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline/2.29.0/allure-commandline-2.29.0.zip -O allure.zip
+          unzip allure.zip -d /opt/
           sudo ln -s /opt/allure-2.29.0/bin/allure /usr/bin/allure
           allure --version
 
