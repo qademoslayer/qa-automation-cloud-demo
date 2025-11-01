@@ -1,4 +1,4 @@
-name: QA Cloud Pipeline (Allure + Slack Enhanced)
+name: QA Cloud Pipeline (Allure + Slack Final Safe Version)
 
 on:
   workflow_dispatch:
@@ -9,6 +9,7 @@ on:
 jobs:
   qa-tests:
     runs-on: ubuntu-latest
+
     steps:
       # 1️⃣ Checkout
       - name: Checkout
@@ -24,60 +25,65 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || true
           pip install pytest pytest-html allure-pytest pytest-allure-adaptor || true
 
-      # 4️⃣ Record start time
-      - name: Record start time
-        id: start
-        run: echo "start_time=$(date +%s)" >> $GITHUB_ENV
-
-      # 5️⃣ Run Tests and Collect Allure Results
-      - name: Run Tests (pytest + allure)
+      # 4️⃣ Install Allure Commandline
+      - name: Install Allure Commandline
         run: |
-          pytest --alluredir=allure-results --maxfail=5 || true
-          TOTAL=$(grep -o "test" allure-results/*.json | wc -l)
-          FAILED=$(grep -o '"status": "failed"' allure-results/*.json | wc -l)
-          echo "total_tests=$TOTAL" >> $GITHUB_ENV
-          echo "failed_tests=$FAILED" >> $GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jre wget
+          wget https://github.com/allure-framework/allure2/releases/latest/download/allure-2.29.0.tgz
+          sudo tar -zxvf allure-2.29.0.tgz -C /opt/
+          sudo ln -s /opt/allure-2.29.0/bin/allure /usr/bin/allure
+          allure --version
 
-      # 6️⃣ Generate Allure Report
+      # 5️⃣ Run Tests (pytest + allure)
+      - name: Run Tests
+        run: |
+          mkdir -p allure-results
+          pytest --alluredir=allure-results || true
+          echo "✅ Tests executed. Checking Allure results..."
+
+      # 6️⃣ Generate Allure Report (with validation)
       - name: Generate Allure Report
         run: |
+          echo "Generating Allure Report..."
           allure generate allure-results --clean -o allure-report || true
+          if [ ! -f "allure-report/index.html" ]; then
+            echo "⚠️ Allure report not generated. Skipping deployment."
+            echo "REPORT_EXISTS=false" >> $GITHUB_ENV
+          else
+            echo "✅ Allure report generated successfully."
+            echo "REPORT_EXISTS=true" >> $GITHUB_ENV
+          fi
 
-      # 7️⃣ Deploy Allure to GitHub Pages
+      # 7️⃣ Conditional Deploy to GitHub Pages
       - name: Deploy Allure to GitHub Pages
+        if: env.REPORT_EXISTS == 'true'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./allure-report
           publish_branch: gh-pages
 
-      # 8️⃣ Compute Duration
-      - name: Compute duration
-        id: duration
-        run: |
-          end=$(date +%s)
-          duration=$((end - $start_time))
-          echo "duration=$duration" >> $GITHUB_ENV
-
-      # 9️⃣ Slack Notification (Detailed)
+      # 8️⃣ Slack Notification (Smart Status)
       - name: Send Slack Notification
         if: always()
         run: |
           STATUS="${{ job.status }}"
-          COLOR="#439FE0"
-          ICON=":hourglass_flowing_sand:"
-          if [ "$STATUS" = "success" ]; then COLOR="#36a64f"; ICON=":white_check_mark:"; fi
-          if [ "$STATUS" = "failure" ]; then COLOR="#FF0000"; ICON=":x:"; fi
-
-          DURATION_SEC=${{ env.duration }}
-          DURATION_MIN=$(echo "scale=2; $DURATION_SEC/60" | bc)
-
-          TOTAL=${{ env.total_tests }}
-          FAILED=${{ env.failed_tests }}
-          PASSED=$((TOTAL - FAILED))
+          COLOR="#36a64f"
+          ICON=":white_check_mark:"
+          MSG="QA Pipeline Completed"
+          if [ "$STATUS" = "failure" ]; then
+            COLOR="#FF0000"
+            ICON=":x:"
+            MSG="QA Pipeline Failed"
+          fi
+          if [ "$REPORT_EXISTS" = "false" ]; then
+            COLOR="#FFA500"
+            ICON=":warning:"
+            MSG="QA Pipeline Skipped (No Allure Report)"
+          fi
 
           curl -X POST -H 'Content-type: application/json' \
           --data "{
@@ -87,25 +93,16 @@ jobs:
                 \"blocks\": [
                   {
                     \"type\": \"header\",
-                    \"text\": {\"type\": \"plain_text\", \"text\": \"$ICON QA Pipeline Completed\"}
+                    \"text\": {\"type\": \"plain_text\", \"text\": \"$ICON $MSG\"}
                   },
                   {
                     \"type\": \"section\",
                     \"fields\": [
                       {\"type\": \"mrkdwn\", \"text\": \"*Status:*\n$STATUS\"},
-                      {\"type\": \"mrkdwn\", \"text\": \"*Duration:*\n${DURATION_MIN} min\"},
-                      {\"type\": \"mrkdwn\", \"text\": \"*Total Tests:*\n$TOTAL\"},
-                      {\"type\": \"mrkdwn\", \"text\": \"*Failed:*\n$FAILED\"},
                       {\"type\": \"mrkdwn\", \"text\": \"*Report:*\n<https://qademoslayer.github.io/qa-automation-cloud-demo/|View Allure Report>\"},
                       {\"type\": \"mrkdwn\", \"text\": \"*Triggered by:*\n${{ github.actor }}\"},
-                      {\"type\": \"mrkdwn\", \"text\": \"*Branch:*\n${{ github.ref_name }}\"}
-                    ]
-                  },
-                  {
-                    \"type\": \"context\",
-                    \"elements\": [
-                      {\"type\": \"mrkdwn\", \"text\": \"Commit: ${{ github.sha }}\"},
-                      {\"type\": \"mrkdwn\", \"text\": \"Repo: ${{ github.repository }}\"}
+                      {\"type\": \"mrkdwn\", \"text\": \"*Branch:*\n${{ github.ref_name }}\"},
+                      {\"type\": \"mrkdwn\", \"text\": \"*Commit:*\n${{ github.sha }}\"}
                     ]
                   }
                 ]
