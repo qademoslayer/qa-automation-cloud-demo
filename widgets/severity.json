@@ -1,1 +1,1 @@
-[]
+[{"uid":"23cc1d5572c07f93","name":"test_api_contract_template","time":{"start":1761986088137,"stop":1761986088137,"duration":0},"status":"passed","severity":"normal"},{"uid":"be340c121423458b","name":"test_contract_schema_valid","time":{"start":1761986088135,"stop":1761986088136,"duration":1},"status":"passed","severity":"normal"}]
