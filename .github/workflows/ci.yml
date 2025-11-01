@@ -1,16 +1,20 @@
-name: QA Cloud Pipeline (Allure + Slack Final Stable)
+name: QA Cloud Pipeline (Allure + Slack + Smart Auto Trigger)
 
 on:
-  workflow_dispatch:
-  push:
+  workflow_dispatch:         # manual trigger workflow
+  push:                      # when push/pull to main branch auto trigger
     branches: [ "main" ]
+  pull_request:              # when PR auto trigger
+    branches: [ "main" ]
+  schedule:                  # every midnight 3:00（UTC+8 → 19:00 UTC）
+    - cron: '0 19 * * *'
 
 jobs:
   qa-tests:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout
+      # 1️⃣ Checkout repository
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -20,15 +24,32 @@ jobs:
         with:
           python-version: '3.11'
 
-      # 3️⃣ Install dependencies
+      # 3️⃣ Detect if code changes include tests
+      - name: Check if test files changed
+        id: check_tests
+        run: |
+          echo "🔍 Checking for test file changes..."
+          git fetch origin main || true
+          CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^tests/|\.py$' || true)
+          if [ -z "$CHANGED" ]; then
+            echo "No test-related changes detected."
+            echo "skip_run=true" >> $GITHUB_ENV
+          else
+            echo "Detected test changes: $CHANGED"
+            echo "skip_run=false" >> $GITHUB_ENV
+          fi
+
+      # 4️⃣ Install dependencies
       - name: Install dependencies
+        if: env.skip_run == 'false'
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-html allure-pytest>=2.13.5
           pip install --upgrade allure-python-commons
 
-      # 4️⃣ Install Allure Commandline
+      # 5️⃣ Install Allure Commandline
       - name: Install Allure Commandline
+        if: env.skip_run == 'false'
         run: |
           sudo apt-get update
           sudo apt-get install -y openjdk-17-jre wget unzip
@@ -37,8 +58,9 @@ jobs:
           sudo ln -s /opt/allure-2.29.0/bin/allure /usr/bin/allure
           allure --version
 
-      # 5️⃣ Run Pytest (with hotfix for collections.Mapping)
+      # 6️⃣ Run Tests (Pytest + Allure)
       - name: Run Tests
+        if: env.skip_run == 'false'
         run: |
           mkdir -p allure-results
           python -c "import collections; import collections.abc; collections.Mapping = collections.abc.Mapping"
@@ -46,8 +68,9 @@ jobs:
           echo "✅ Tests executed. Checking allure results..."
           ls -al allure-results
 
-      # 6️⃣ Generate Allure Report
+      # 7️⃣ Generate Allure Report
       - name: Generate Allure Report
+        if: env.skip_run == 'false'
         run: |
           echo "Generating Allure Report..."
           allure generate allure-results --clean -o allure-report || true
@@ -59,20 +82,21 @@ jobs:
             echo "REPORT_EXISTS=true" >> $GITHUB_ENV
           fi
 
-      # 7️⃣ Deploy to GitHub Pages
+      # 8️⃣ Deploy to GitHub Pages
       - name: Deploy Allure to GitHub Pages
-        if: env.REPORT_EXISTS == 'true'
+        if: env.skip_run == 'false' && env.REPORT_EXISTS == 'true'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./allure-report
           publish_branch: gh-pages
 
-      # 8️⃣ Send Slack Notification (includes link)
+      # 9️⃣ Slack Notification (Smart)
       - name: Send Slack Notification
         if: always()
         run: |
           STATUS="${{ job.status }}"
+          SKIP="${{ env.skip_run }}"
           COLOR="#36a64f"
           ICON=":white_check_mark:"
           MSG="QA Pipeline Completed"
@@ -80,6 +104,11 @@ jobs:
             COLOR="#FF0000"
             ICON=":x:"
             MSG="QA Pipeline Failed"
+          fi
+          if [ "$SKIP" = "true" ]; then
+            COLOR="#AAAAAA"
+            ICON=":zzz:"
+            MSG="QA Pipeline Skipped (No Test Changes)"
           fi
           if [ "$REPORT_EXISTS" = "false" ]; then
             COLOR="#FFA500"
@@ -101,10 +130,9 @@ jobs:
                     \"type\": \"section\",
                     \"fields\": [
                       {\"type\": \"mrkdwn\", \"text\": \"*Status:*\n$STATUS\"},
-                      {\"type\": \"mrkdwn\", \"text\": \"*Report:*\n<https://qademoslayer.github.io/qa-automation-cloud-demo/|View Allure Report>\"},
-                      {\"type\": \"mrkdwn\", \"text\": \"*Triggered by:*\n${{ github.actor }}\"},
                       {\"type\": \"mrkdwn\", \"text\": \"*Branch:*\n${{ github.ref_name }}\"},
-                      {\"type\": \"mrkdwn\", \"text\": \"*Commit:*\n${{ github.sha }}\"}
+                      {\"type\": \"mrkdwn\", \"text\": \"*Triggered by:*\n${{ github.actor }}\"},
+                      {\"type\": \"mrkdwn\", \"text\": \"*Report:*\n<https://qademoslayer.github.io/qa-automation-cloud-demo/|View Allure Report>\"}
                     ]
                   }
                 ]
