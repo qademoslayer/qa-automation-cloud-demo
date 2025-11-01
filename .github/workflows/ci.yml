@@ -40,7 +40,7 @@ jobs:
       - name: Run Tests
         run: |
           mkdir -p allure-results
-          pytest --alluredir=allure-results || true
+          pytest -v tests/ --alluredir=allure-results || true
           echo "✅ Tests executed. Checking Allure results..."
 
       # 6️⃣ Generate Allure Report (with validation)
