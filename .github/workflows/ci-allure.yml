@@ -19,11 +19,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
           pip install -r requirements.txt
-          pip install allure-pytest
           pip install pytest-playwright
-          pip install playwright
+          pip install allure-pytest
 
       - name: Install Playwright Browsers
         run: playwright install --with-deps
@@ -36,44 +34,3 @@ jobs:
         with:
           name: allure-results
           path: allure-results
-
-  publish:
-    needs: tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download Allure results
-        uses: actions/download-artifact@v4
-        with:
-          name: allure-results
-          path: allure-results
-
-      - name: Install Allure
-        run: |
-          sudo apt update
-          sudo apt install default-jre -y
-          wget https://github.com/allure-framework/allure2/releases/download/2.29.0/allure-2.29.0.tgz
-          tar -zxvf allure-2.29.0.tgz
-          sudo mv allure-2.29.0 /usr/local/allure
-          sudo ln -s /usr/local/allure/bin/allure /usr/bin/allure
-
-      - name: Generate Allure Report
-        run: allure generate allure-results -o allure-report --clean
-
-      - name: Deploy Report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: allure-report
-
-      - name: Send Slack Notification
-        if: always()
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          curl -X POST -H 'Content-type: application/json' --data \
-          "{\"text\":\"Allure report updated ✔️\"}" \
-          $SLACK_WEBHOOK_URL
