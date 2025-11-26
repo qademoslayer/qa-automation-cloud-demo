@@ -1,56 +1,77 @@
-name: Run Tests & Publish Allure Report
+name: QA Automation CI
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   pull_request:
 
 jobs:
   test:
-    runs-on: windows-latest   
+    runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.13"
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
 
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install allure-pytest
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest allure-pytest
 
-      - name: Run Pytest with Allure
-        run: |
-          pytest --alluredir=allure-results
+    - name: Run tests with Allure
+      run: |
+        pytest --alluredir=allure-results
 
-      - name: Install allure commandline
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+    - name: Upload Allure Results Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: allure-results
+        path: allure-results
 
-      - name: Download Allure CLI
-        run: |
-          curl -o allure.zip -L https://github.com/allure-framework/allure2/releases/download/2.32.0/allure-2.32.0.zip
-          tar -xf allure.zip
+    # ----------- Publish Allure report to GitHub Pages ------------
+    - name: Generate Allure Report
+      run: |
+        pip install allure-python-commons
+        pip install allure-pytest
+        npm install -g allure-commandline --save-dev
 
-      - name: Generate Allure Report
-        run: |
-          ./allure-2.32.0/bin/allure generate allure-results --clean -o allure-report
+    - name: Build Allure HTML
+      run: |
+        allure generate allure-results --clean -o allure-report
 
-      - name: Upload Allure Report Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: allure-report
-          path: allure-report
+    - name: Upload Allure report to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./allure-report
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: allure-report
+    # ----------------- Slack Notification -----------------
+    - name: Send Slack Notification
+      if: always() # Always send report even when pytest fails
+      run: |
+        REPORT_URL="https://YOUR_GITHUB_USERNAME.github.io/qa-automation-cloud-demo"
+        COLOR="#00FF00"
+        STATUS="PASSED"
+
+        if [ "${{ job.status }}" != "success" ]; then
+            COLOR="#FF0000"
+            STATUS="FAILED"
+        fi
+
+        curl -X POST -H 'Content-type: application/json' \
+        --data "{
+          \"attachments\": [
+            {
+              \"color\": \"$COLOR\",
+              \"title\": \"QA Automation Test Results: $STATUS\",
+              \"text\": \"Allure Report: $REPORT_URL\nBranch: ${{ github.ref }}\nCommit: ${{ github.sha }}\",
+              \"mrkdwn_in\": [\"text\"]
+            }
+          ]
+        }" \
+        ${{ secrets.SLACK_WEBHOOK_URL }}
