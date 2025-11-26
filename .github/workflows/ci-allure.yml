@@ -1,0 +1,75 @@
+name: Run Tests + Publish Allure + Slack Notify
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright Browsers
+        run: |
+          python -m playwright install
+
+      - name: Run Pytest + Generate Allure Results
+        run: |
+          pytest -s --alluredir=allure-results
+
+      - name: Upload Allure Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: allure-results
+          path: allure-results
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Download Allure Results
+        uses: actions/download-artifact@v3
+        with:
+          name: allure-results
+          path: allure-results
+
+      - name: Publish Allure Report to GH Pages
+        uses: simple-elf/allure-report-action@v1.6
+        with:
+          allure_results: allure-results
+          allure_report: allure-report
+          gh_pages: gh-pages
+          keep_reports: 5
+
+      - name: Slack Notification
+        if: always()
+        run: |
+          result="SUCCESS"
+          if [ "${{ job.status }}" != "success" ]; then
+            result="FAILED"
+          fi
+
+          message="*Automation Test Result:* ${result}%0ARepository: $GITHUB_REPOSITORY%0ABuild: $GITHUB_RUN_NUMBER%0AWorkflow: $GITHUB_WORKFLOW"
+
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"${message}\"}" \
+            ${{ secrets.SLACK_WEBHOOK }}
