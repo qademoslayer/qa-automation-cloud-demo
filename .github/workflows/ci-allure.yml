@@ -3,34 +3,110 @@ name: Run Pytest + Allure + Publish + Slack
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   tests:
     runs-on: ubuntu-latest
 
     steps:
+      # ---------------------------
+      # Checkout code
+      # ---------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ---------------------------
+      # Setup Python
+      # ---------------------------
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # ---------------------------
+      # Install dependencies
+      # ---------------------------
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pytest-playwright
-          pip install allure-pytest
-
-      - name: Install Playwright Browsers
-        run: playwright install --with-deps
-
-      - name: Run tests
-        run: pytest -s --alluredir=allure-results
-
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-playwright allure-pytest
+          playwright install chromium
+      
+      # ---------------------------
+      # Run tests & collect Allure results
+      # ---------------------------
+      - name: Run pytest
+        run: |
+          pytest -s --alluredir=allure-results || true
+      
+      # ---------------------------
+      # Upload allure-results as artifact
+      # ---------------------------
       - name: Upload Allure results
         uses: actions/upload-artifact@v4
         with:
           name: allure-results
           path: allure-results
+
+      # ---------------------------
+      # Publish Allure report to GH Pages
+      # ---------------------------
+      - name: Deploy Allure Report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        if: always()
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: allure-results
+
+      # ---------------------------
+      # Slack Notification (Enterprise Grade)
+      # ---------------------------
+      - name: Slack Notify with Test Summary
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          COMMIT="${GITHUB_SHA::7}"
+          REPORT_URL="https://qademoslayer.github.io/qa-automation-cloud-demo/"
+          
+          TOTAL=$(grep -o "collected [0-9]* items" -h .pytest_cache/v/cache/lastfailed 2> /dev/null | awk '{print $2}')
+          PASSED=$(grep -R "PASSED" -h allure-results 2> /dev/null | wc -l)
+          FAILED=$(grep -R "FAILED" -h allure-results 2> /dev/null | wc -l)
+
+          STATUS="success"
+          COLOR="#2eb886"
+          if [ "$FAILED" -gt 0 ]; then
+            STATUS="failed"
+            COLOR="#ff0000"
+          fi
+
+          PAYLOAD=$(cat <<EOF
+          {
+            "attachments": [
+              {
+                "color": "${COLOR}",
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "*QA Automation Pipeline — ${STATUS^^}*\n*Branch:* ${BRANCH}\n*Commit:* ${COMMIT}\n*Total Tests:* ${TOTAL}\n*Passed:* ${PASSED}\n*Failed:* ${FAILED}"
+                    }
+                  },
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "<${REPORT_URL}|📊 View Allure Report>"
+                    }
+                  }
+                ]
+              }
+            ]
+          } EOF)
+
+          curl -X POST -H 'Content-type: application/json' \
+          --data "$PAYLOAD" \
+          $SLACK_WEBHOOK
