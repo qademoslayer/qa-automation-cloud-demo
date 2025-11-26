@@ -14,15 +14,9 @@ jobs:
       id-token: write
 
     steps:
-    # ------------------------
-    # Checkout
-    # ------------------------
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # ------------------------
-    # Python
-    # ------------------------
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -31,16 +25,12 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    # ------------------------
-    # Run tests
-    # ------------------------
-    - name: Run Pytest
-      run: |
-        pytest --alluredir=allure-results || true
+    - name: Run Pytest (always continue)
+      run: pytest --alluredir=allure-results || true
 
-    # ------------------------
+    # ---------------------------
     # Install Allure CLI
-    # ------------------------
+    # ---------------------------
     - name: Install Allure CLI
       run: |
         wget https://github.com/allure-framework/allure2/releases/download/2.29.0/allure-2.29.0.tgz
@@ -48,19 +38,48 @@ jobs:
         sudo mv allure-2.29.0 /opt/allure
         sudo ln -s /opt/allure/bin/allure /usr/bin/allure
 
-    # ------------------------
-    # Generate Allure HTML
-    # ------------------------
+    # ---------------------------
+    # Generate HTML Allure
+    # ---------------------------
     - name: Generate Allure HTML
       run: allure generate allure-results -o allure-report --clean
 
-    # ------------------------
+    # ---------------------------
     # Upload report to GitHub Pages
-    # ------------------------
+    # ---------------------------
     - name: Upload Allure Report
       uses: actions/upload-pages-artifact@v3
       with:
         path: allure-report
+
+    # ---------------------------
+    # Slack Notification (Enterprise)
+    # ---------------------------
+    - name: Notify Slack
+      if: always()
+      env:
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+        BRANCH: ${{ github.ref_name }}
+        COMMIT: ${{ github.sha }}
+        REPORT_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+      run: |
+        TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
+        PASSED=$(grep -R "\"status\":\"passed\"" -h allure-results 2>/dev/null | wc -l)
+        FAILED=$(grep -R "\"status\":\"failed\"" -h allure-results 2>/dev/null | wc -l)
+
+        if [ "$FAILED" -gt 0 ]; then
+          STATUS="FAILED"
+          COLOR="#FF0000"
+        else
+          STATUS="SUCCESS"
+          COLOR="#2EB886"
+        fi
+
+        TEXT="*QA Automation Pipeline — ${STATUS}*\n*Branch:* ${BRANCH}\n*Commit:* ${COMMIT}\n*Total Tests:* ${TOTAL}\n*Passed:* ${PASSED}\n*Failed:* ${FAILED}\n\n📊 <${REPORT_URL}|View Allure Report>"
+
+        curl -X POST -H "Content-Type: application/json" \
+          --data "{\"attachments\":[{\"color\":\"${COLOR}\",\"text\":\"${TEXT}\"}]}" \
+          "$SLACK_WEBHOOK"
 
   deploy:
     needs: tests
