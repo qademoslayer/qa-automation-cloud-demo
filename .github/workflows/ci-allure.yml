@@ -64,6 +64,8 @@ jobs:
       # ---------------------------
       - name: Slack Notify with Test Summary
         if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           BRANCH="${GITHUB_REF#refs/heads/}"
           COMMIT="${GITHUB_SHA::7}"
@@ -80,36 +82,34 @@ jobs:
             COLOR="#FF0000"
           fi
 
-          # -----------------------------------------
-          # Build JSON using HERE-DOC (must start at col 1)
-          # -----------------------------------------
+          # Build JSON here-doc
           read -r -d '' PAYLOAD << 'EOF'
-{    
-   "attachments": [
-        {
-        "color": "__COLOR__",
-        "blocks": [
             {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*QA Automation Pipeline — __STATUS__*\n*Branch:* __BRANCH__\n*Commit:* __COMMIT__\n*Total Tests:* __TOTAL__\n*Passed:* __PASSED__\n*Failed:* __FAILED__"
-             }
-            },
-            {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "<__REPORT_URL__|📊 View Allure Report>"
+            "attachments": [
+                {
+                "color": "__COLOR__",
+                "blocks": [
+                    {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*QA Automation Pipeline — __STATUS__*\n*Branch:* __BRANCH__\n*Commit:* __COMMIT__\n*Total Tests:* __TOTAL__\n*Passed:* __PASSED__\n*Failed:* __FAILED__"
+                    }
+                    },
+                    {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "<__REPORT_URL__|📊 View Allure Report>"
+                    }
+                    }
+                ]
                 }
+            ]
             }
-          ]
-        }
-    ]
-}
-EOF
+            EOF
 
-          # Replace placeholders
+          # Replace variables
           PAYLOAD="${PAYLOAD/__COLOR__/$COLOR}"
           PAYLOAD="${PAYLOAD/__STATUS__/$STATUS}"
           PAYLOAD="${PAYLOAD/__BRANCH__/$BRANCH}"
@@ -121,4 +121,4 @@ EOF
 
           curl -X POST -H "Content-Type: application/json" \
             --data "$PAYLOAD" \
-            ${{ secrets.SLACK_WEBHOOK_URL }}
+            "$SLACK_WEBHOOK"
