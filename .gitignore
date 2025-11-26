@@ -1,0 +1,20 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# pytest cache
+.pytest_cache/
+
+# Allure
+allure-results/
+allure-report/
+
+# VSCode
+.vscode/
+
+# Excel / temp files
+*.xlsx~
+*.tmp
+desktop.ini 
