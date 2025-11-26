@@ -66,9 +66,6 @@ jobs:
       env:
         SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
       run: |
-        # -------------------------------------
-        #  Metadata
-        # -------------------------------------
         BRANCH="${GITHUB_REF#refs/heads/}"
         COMMIT="${GITHUB_SHA::7}"
         REPORT_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
@@ -80,14 +77,12 @@ jobs:
         STATUS="SUCCESS"
         COLOR="#2EB886"
         if [ "$FAILED" -gt 0 ]; then
-            STATUS="FAILED"
-            COLOR="#FF0000"
+          STATUS="FAILED"
+          COLOR="#FF0000"
         fi
 
-        # ------------------------------------------------------------------
-        #  Build Slack JSON Payload (YAML-safe, no indentation issues)
-        # ------------------------------------------------------------------
-        PAYLOAD=$(cat << 'EOF'
+        # JSON PAYLOAD - literal block, indentation SAFE
+        read -r -d '' PAYLOAD << 'EOF'
 {
   "attachments": [
     {
@@ -112,9 +107,8 @@ jobs:
   ]
 }
 EOF
-)
 
-        # Replace placeholders safely
+        # Replace placeholders
         PAYLOAD="${PAYLOAD/__COLOR__/$COLOR}"
         PAYLOAD="${PAYLOAD/__STATUS__/$STATUS}"
         PAYLOAD="${PAYLOAD/__BRANCH__/$BRANCH}"
@@ -124,7 +118,7 @@ EOF
         PAYLOAD="${PAYLOAD/__FAILED__/$FAILED}"
         PAYLOAD="${PAYLOAD/__REPORT_URL__/$REPORT_URL}"
 
-        # Send to Slack
+        # Send
         curl -X POST -H "Content-Type: application/json" \
           --data "$PAYLOAD" \
           "$SLACK_WEBHOOK"
