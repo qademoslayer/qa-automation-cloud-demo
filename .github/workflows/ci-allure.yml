@@ -1,4 +1,5 @@
-name: Run Pytest + Allure + Publish + Slack
+name: QA Automation CI + Allure + Slack
+
 on:
   push:
     branches: [ main ]
@@ -14,97 +15,79 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          python -m playwright install --with-deps
+          pip install pytest pytest-playwright allure-pytest
+
+      - name: Install Playwright Browsers
+        run: playwright install --with-deps
 
       - name: Run tests
-        run: |
-          pytest --alluredir=allure-results || true
+        run: pytest --alluredir=allure-results
 
-      - name: Upload Allure results
+      - name: Upload Allure results artifact
         uses: actions/upload-artifact@v4
         with:
           name: allure-results
           path: allure-results
 
-      - name: Deploy Allure to GitHub Pages
-        uses: simple-elf/allure-report-action@v1.7
+      - name: Deploy Allure Report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        if: always()
         with:
-          allure_results: allure-results
-          gh_pages: gh-pages
-          repo: ${{ github.repository }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: allure-results
+          publish_branch: gh-pages
 
-      # -----------------------------
-      # SLACK — safest format, NO EOF
-      # -----------------------------
-      - name: Slack Notify (bug-proof)
+      - name: Slack Notify (Stable Version)
         if: always()
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          BRANCH: ${{ github.ref_name }}
-          COMMIT: ${{ github.sha }}
-          REPORT_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: |
-          TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
-          PASSED=$(grep -R "\"status\":\"passed\"" allure-results 2>/dev/null | wc -l)
-          FAILED=$(grep -R "\"status\":\"failed\"" allure-results 2>/dev/null | wc -l)
-
-          if [ "$FAILED" -gt 0 ]; then
+          STATUS="SUCCESS"
+          if grep -R "\"status\":\"failed\"" allure-results >/dev/null 2>&1; then
             STATUS="FAILED"
-            COLOR="#FF0000"
-          else
-            STATUS="PASSED"
-            COLOR="#2EB886"
           fi
 
-          # -------- BUILD JSON USING jq (NO EOF!) --------
-          jq -n \
-            --arg color "$COLOR" \
-            --arg status "$STATUS" \
-            --arg branch "$BRANCH" \
-            --arg commit "${COMMIT::7}" \
-            --arg total "$TOTAL" \
-            --arg passed "$PASSED" \
-            --arg failed "$FAILED" \
-            --arg report "$REPORT_URL" \
-            '{
-              attachments: [
-                {
-                  color: $color,
-                  blocks: [
-                    {
-                      type: "section",
-                      text: {
-                        type: "mrkdwn",
-                        text:
-                          "*QA Automation Pipeline — \($status)*\n" +
-                          "*Branch:* \($branch)\n" +
-                          "*Commit:* \($commit)\n" +
-                          "*Total Tests:* \($total)\n" +
-                          "*Passed:* \($passed)\n" +
-                          "*Failed:* \($failed)"
-                      }
-                    },
-                    {
-                      type: "section",
-                      text: {
-                        type: "mrkdwn",
-                        text: "<\($report)|📊 View Allure Report>"
-                      }
-                    }
-                  ]
-                }
-              ]
-            }' \
-            > slack.json
+          TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
+          PASSED=$(grep -R "\"status\":\"passed\"" allure-results | wc -l)
+          FAILED=$(grep -R "\"status\":\"failed\"" allure-results | wc -l)
 
-          # -------- SEND Slack Notification --------
-          curl -X POST -H "Content-Type: application/json" \
-               --data @slack.json \
-               "$SLACK_WEBHOOK"
+          REPORT_URL="https://${GITHUB_ACTOR}.github.io/${GITHUB_REPOSITORY#*/}/"
+
+          COLOR="#2eb886"
+          if [ "$FAILED" -gt 0 ]; then COLOR="#ff0000"; fi
+
+          PAYLOAD=$(cat <<EOF
+{
+  "attachments": [
+    {
+      "color": "$COLOR",
+      "blocks": [
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*QA Automation Pipeline — $STATUS*\n*Branch:* ${GITHUB_REF#refs/heads/}\n*Commit:* ${GITHUB_SHA::7}\n*Total Tests:* $TOTAL\n*Passed:* $PASSED\n*Failed:* $FAILED"
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "<$REPORT_URL|📊 View Allure Report>"
+          }
+        }
+      ]
+    }
+  ]
+}
+EOF
+)
+
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "$PAYLOAD" \
+            "$SLACK_WEBHOOK"
