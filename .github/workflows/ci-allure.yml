@@ -109,16 +109,16 @@ jobs:
             }
             EOF
 
-          # Replace variables
-          PAYLOAD="${PAYLOAD/__COLOR__/$COLOR}"
-          PAYLOAD="${PAYLOAD/__STATUS__/$STATUS}"
-          PAYLOAD="${PAYLOAD/__BRANCH__/$BRANCH}"
-          PAYLOAD="${PAYLOAD/__COMMIT__/$COMMIT}"
-          PAYLOAD="${PAYLOAD/__TOTAL__/$TOTAL}"
-          PAYLOAD="${PAYLOAD/__PASSED__/$PASSED}"
-          PAYLOAD="${PAYLOAD/__FAILED__/$FAILED}"
-          PAYLOAD="${PAYLOAD/__REPORT_URL__/$REPORT_URL}"
+            # Replace variables
+            PAYLOAD="${PAYLOAD/__COLOR__/$COLOR}"
+            PAYLOAD="${PAYLOAD/__STATUS__/$STATUS}"
+            PAYLOAD="${PAYLOAD/__BRANCH__/$BRANCH}"
+            PAYLOAD="${PAYLOAD/__COMMIT__/$COMMIT}"
+            PAYLOAD="${PAYLOAD/__TOTAL__/$TOTAL}"
+            PAYLOAD="${PAYLOAD/__PASSED__/$PASSED}"
+            PAYLOAD="${PAYLOAD/__FAILED__/$FAILED}"
+            PAYLOAD="${PAYLOAD/__REPORT_URL__/$REPORT_URL}"
 
-          curl -X POST -H "Content-Type: application/json" \
-            --data "$PAYLOAD" \
-            "$SLACK_WEBHOOK"
+            curl -X POST -H "Content-Type: application/json" \
+                --data "$PAYLOAD" \
+                "$SLACK_WEBHOOK"
