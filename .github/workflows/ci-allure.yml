@@ -1,4 +1,4 @@
-name: Run Pytest + Allure + Deploy + Slack
+name: Run Pytest + Allure + Deploy
 
 on:
   push:
@@ -7,6 +7,11 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
 
     steps:
     # ------------------------
@@ -34,41 +39,40 @@ jobs:
         pytest --alluredir=allure-results || true
 
     # ------------------------
-    # Install Allure CLI (binary)
+    # Install Allure CLI
     # ------------------------
     - name: Install Allure CLI
       run: |
-        wget https://github.com/allure-framework/allure2/releases/latest/download/allure-2.29.0.tgz
+        wget https://github.com/allure-framework/allure2/releases/download/2.29.0/allure-2.29.0.tgz
         tar -xzf allure-2.29.0.tgz
         sudo mv allure-2.29.0 /opt/allure
         sudo ln -s /opt/allure/bin/allure /usr/bin/allure
 
     # ------------------------
-    # Generate HTML report
+    # Generate Allure HTML
     # ------------------------
     - name: Generate Allure HTML
       run: allure generate allure-results -o allure-report --clean
 
     # ------------------------
-    # Upload HTML to GitHub Pages (artifact)
+    # Upload report to GitHub Pages
     # ------------------------
-    - name: Upload report artifacts
-      uses: actions/upload-pages-artifact@v2
+    - name: Upload Allure Report
+      uses: actions/upload-pages-artifact@v3
       with:
         path: allure-report
-
 
   deploy:
     needs: tests
     runs-on: ubuntu-latest
-
     permissions:
       pages: write
       id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
-    # ------------------------
-    # Deploy to GitHub Pages
-    # ------------------------
     steps:
-    - name: Deploy Allure report to GitHub Pages
-      uses: actions/deploy-pages@v3
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
