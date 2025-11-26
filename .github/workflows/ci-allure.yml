@@ -1,4 +1,4 @@
-name: QA Automation CI + Allure + Slack
+name: Python Tests + Allure Report
 
 on:
   push:
@@ -9,50 +9,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-playwright allure-pytest
-
-      - name: Install Playwright Browsers
-        run: playwright install --with-deps
+          pip install pytest allure-pytest
+          pip install playwright
+          playwright install chromium
 
       - name: Run tests
-        run: pytest --alluredir=allure-results
-
-      - name: Upload Allure results artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: allure-results
-          path: allure-results
-
-      - name: Slack Notify (Safe Version)
-        if: always()
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          STATUS="SUCCESS"
-          if grep -R "\"status\":\"failed\"" allure-results >/dev/null 2>&1; then STATUS="FAILED"; fi
+          pytest --alluredir=allure-results
+        continue-on-error: true
 
-          TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
-          PASSED=$(grep -R "\"status\":\"passed\"" allure-results | wc -l)
-          FAILED=$(grep -R "\"status\":\"failed\"" allure-results | wc -l)
+      - name: Install Allure CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jre
+          wget https://github.com/allure-framework/allure2/releases/latest/download/allure-2.29.0.tgz
+          tar -zxvf allure-2.29.0.tgz
+          sudo mv allure-2.29.0 /opt/allure
+          sudo ln -s /opt/allure/bin/allure /usr/bin/allure
 
-          REPORT_URL="https://${GITHUB_ACTOR}.github.io/${GITHUB_REPOSITORY#*/}/"
+      - name: Generate Allure HTML
+        run: |
+          allure generate allure-results -o _site --clean
 
-          COLOR="#2eb886"
-          if [ "$FAILED" -gt 0 ]; then COLOR="#ff0000"; fi
+      - name: Upload Allure Report to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
 
-          TEXT="*QA Automation Pipeline — ${STATUS}*\n*Branch:* ${GITHUB_REF#refs/heads/}\n*Commit:* ${GITHUB_SHA::7}\n*Total Tests:* ${TOTAL}\n*Passed:* ${PASSED}\n*Failed:* ${FAILED}\n\n<${REPORT_URL}|📊 View Allure Report>"
+  deploy:
+    needs: tests
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
 
-          curl -X POST -H "Content-type: application/json" \
-            --data "{\"attachments\": [{\"color\": \"${COLOR}\", \"blocks\": [{\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"${TEXT}\"}}]}]}" \
-            "$SLACK_WEBHOOK"
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4
