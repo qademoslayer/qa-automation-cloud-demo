@@ -1,4 +1,4 @@
-name: Python Tests + Allure
+name: Run Pytest + Allure + Deploy + Slack
 
 on:
   push:
@@ -9,44 +9,66 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    # ------------------------
+    # Checkout
+    # ------------------------
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Install Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
+    # ------------------------
+    # Python
+    # ------------------------
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
 
-      - name: Install dependencies
-        run: |
-          pip install pytest allure-pytest
-          pip install playwright
-          playwright install chromium
+    - name: Install dependencies
+      run: pip install -r requirements.txt
 
-      - name: Run tests
-        run: |
-          pytest --alluredir=allure-results
-        continue-on-error: true
+    # ------------------------
+    # Run tests
+    # ------------------------
+    - name: Run Pytest
+      run: |
+        pytest --alluredir=allure-results || true
 
-      # ⭐⭐ 使用官方 Allure Report Action（不会失败）
-      - name: Generate Allure Report
-        uses: simple-elf/allure-report-action@v1.7
-        with:
-          allure_results: allure-results
-          allure_report: allure-report
+    # ------------------------
+    # Install Allure CLI (binary)
+    # ------------------------
+    - name: Install Allure CLI
+      run: |
+        wget https://github.com/allure-framework/allure2/releases/latest/download/allure-2.29.0.tgz
+        tar -xzf allure-2.29.0.tgz
+        sudo mv allure-2.29.0 /opt/allure
+        sudo ln -s /opt/allure/bin/allure /usr/bin/allure
 
-      - name: Upload to GitHub Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: allure-report
+    # ------------------------
+    # Generate HTML report
+    # ------------------------
+    - name: Generate Allure HTML
+      run: allure generate allure-results -o allure-report --clean
+
+    # ------------------------
+    # Upload HTML to GitHub Pages (artifact)
+    # ------------------------
+    - name: Upload report artifacts
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: allure-report
+
 
   deploy:
     needs: tests
     runs-on: ubuntu-latest
+
     permissions:
       pages: write
       id-token: write
 
+    # ------------------------
+    # Deploy to GitHub Pages
+    # ------------------------
     steps:
-      - name: Deploy
-        uses: actions/deploy-pages@v4
+    - name: Deploy Allure report to GitHub Pages
+      uses: actions/deploy-pages@v3
