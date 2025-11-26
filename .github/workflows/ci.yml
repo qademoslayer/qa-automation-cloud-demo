@@ -52,13 +52,15 @@ jobs:
 
     # ----------------- Slack Notification -----------------
     - name: Send Slack Notification
-      if: always() # Always send report even when pytest fails
+      if: always()
+      shell: bash
       run: |
-        REPORT_URL="https://YOUR_GITHUB_USERNAME.github.io/qa-automation-cloud-demo"
-        COLOR="#00FF00"
-        STATUS="PASSED"
-
-        if [ "${{ job.status }}" != "success" ]; then
+        REPORT_URL="https://qademoslayer.github.io/qa-automation-cloud-demo"
+        
+        if [ "${{ job.status }}" = "success" ]; then
+            COLOR="#00FF00"
+            STATUS="PASSED"
+        else
             COLOR="#FF0000"
             STATUS="FAILED"
         fi
