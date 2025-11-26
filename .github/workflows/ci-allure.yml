@@ -22,6 +22,11 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install allure-pytest
+          pip install pytest-playwright
+          pip install playwright
+
+      - name: Install Playwright Browsers
+        run: playwright install --with-deps
 
       - name: Run tests
         run: pytest -s --alluredir=allure-results
@@ -70,5 +75,5 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           curl -X POST -H 'Content-type: application/json' --data \
-          "{\"text\":\"Allure report updated. GitHub Pages ready.\"}" \
+          "{\"text\":\"Allure report updated ✔️\"}" \
           $SLACK_WEBHOOK_URL
