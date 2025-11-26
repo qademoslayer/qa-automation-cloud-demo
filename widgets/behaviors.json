@@ -1,1 +1,1 @@
-{"total":0,"items":[]}
+{"total":8,"items":[{"uid":"ba457c5104c0b56216141dfec87dedf8","name":"API Tests","statistic":{"failed":0,"broken":0,"skipped":0,"passed":1,"unknown":0,"total":1}},{"uid":"142e74f056bd23aadba719aeb83d9163","name":"Random Tests","statistic":{"failed":0,"broken":0,"skipped":0,"passed":1,"unknown":0,"total":1}}]}
