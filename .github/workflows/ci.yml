@@ -1,97 +1,96 @@
-name: CI + Allure + Slack
+name: QA Automation CI (Allure + Slack)
 
 on:
   push:
     branches: [ main ]
   pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  test:
+  tests:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout 源码
-      - name: Checkout code
+
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2) 安装 Python
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.11"
 
-      # 3) 安装依赖
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      # 4) 安装 Playwright 浏览器
-      - name: Install Playwright browsers
-        run: |
           python -m playwright install --with-deps
 
-      # 5) 运行 pytest（pytest.ini 已经配置 --alluredir=allure-results）
       - name: Run tests with pytest
         run: |
           pytest
 
-      # 6) 取回 gh-pages 分支里的历史 Allure（第一次没有分支没关系）
-      - name: Get Allure history
-        if: always()
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          ref: gh-pages
-          path: gh-pages
 
-      # 7) 用 simple-elf/allure-report-action 生成带 history 的报告
-      - name: Generate Allure report with history
+      - name: Upload Allure results artifact
         if: always()
-        id: allure-report
-        uses: simple-elf/allure-report-action@v1.13
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results
+
+
+      - name: Generate Allure report
+        if: always()
+        uses: simple-elf/allure-report-action@v1.8
         with:
           allure_results: allure-results
-          gh_pages: gh-pages
           allure_report: allure-report
-          allure_history: allure-history
+          keep_reports: 20
 
-      # 8) 发布到 GitHub Pages（gh-pages 分支）
+
       - name: Deploy Allure report to GitHub Pages
         if: always()
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: allure-history
           publish_branch: gh-pages
+          publish_dir: allure-report
 
-      # 9) 发 Slack 通知
-      - name: Notify Slack
+
+      - name: Send Slack notification
         if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          STATUS="passed"
-          COLOR="good"
-          if [ "${{ job.status }}" != "success" ]; then
-            STATUS="failed"
-            COLOR="danger"
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            EMOJI="✅"
+          else
+            EMOJI="❌"
           fi
 
-          REPORT_URL="https://qademoslayer.github.io/qa-automation-cloud-demo/"
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref_name }}"
+          REPORT_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
 
-          payload=$(cat <<EOF
+          read -r -d '' PAYLOAD << EOF
           {
+            "text": "$EMOJI *QA Automation Cloud Demo* CI run ($STATUS)",
             "attachments": [
               {
-                "color": "$COLOR",
-                "title": "qa-automation-cloud-demo CI $STATUS",
-                "text": "Allure report: $REPORT_URL\nBranch: ${{ github.ref_name }}\nCommit: ${{ github.sha }}",
-                "mrkdwn_in": ["text"]
+                "color": "$([ "$STATUS" = "success" ] && echo good || echo danger)",
+                "fields": [
+                  { "title": "Repository", "value": "$REPO", "short": true },
+                  { "title": "Branch", "value": "$BRANCH", "short": true },
+                  { "title": "Result", "value": "$STATUS", "short": true },
+                  { "title": "Allure Report", "value": "$REPORT_URL", "short": false }
+                ]
               }
             ]
           }
           EOF
-          )
 
-          curl -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL"
+          curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
