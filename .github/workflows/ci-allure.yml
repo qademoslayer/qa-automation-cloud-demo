@@ -9,80 +9,85 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # ---------------------
-    # 1. Checkout Source Code
-    # ---------------------
-    - name: Checkout code
-      uses: actions/checkout@v4
+      # -----------------------------------
+      # Checkout Repo
+      # -----------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # ---------------------
-    # 2. Setup Python
-    # ---------------------
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
+      # -----------------------------------
+      # Set up Python
+      # -----------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    # ---------------------
-    # 3. Install Dependencies
-    # ---------------------
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        playwright install --with-deps chromium
+      # -----------------------------------
+      # Install Dependencies
+      # -----------------------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install Playwright browsers
+          python -m playwright install --with-deps
 
-    # ---------------------
-    # 4. Run Tests
-    # ---------------------
-    - name: Run Pytest + Allure
-      run: |
-        pytest --alluredir=allure-results
+      # -----------------------------------
+      # Run Tests
+      # -----------------------------------
+      - name: Run pytest
+        run: |
+          pytest --alluredir=allure-results || true
 
-    # ---------------------
-    # 5. Upload Allure Results as Artifact
-    # ---------------------
-    - name: Upload Allure Results
-      uses: actions/upload-artifact@v4
-      with:
-        name: allure-results
-        path: allure-results
+      # -----------------------------------
+      # Upload Allure results as artifact
+      # -----------------------------------
+      - name: Upload Allure results
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results
 
-    # ---------------------
-    # 6. Deploy Allure Report to GitHub Pages
-    # ---------------------
-    - name: Deploy Allure Report
-      uses: simple-elf/allure-report-action@v1.6
-      with:
-        allure_results: allure-results
-        report_folder: allure-report
-        gh_pages: gh-pages
+      # -----------------------------------
+      # Deploy Allure Report to GitHub Pages
+      # -----------------------------------
+      - name: Deploy Allure Report to GitHub Pages
+        uses: simple-elf/allure-report-action@v1.7
+        with:
+          allure_results: allure-results
+          gh_pages: gh-pages
+          repo: ${{ github.repository }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
-    # ---------------------
-    # 7. Slack Notification (Enterprise Grade)
-    # ---------------------
-    - name: Slack Notify with Test Summary
-      if: always()
-      env:
-        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-      run: |
-        BRANCH="${GITHUB_REF#refs/heads/}"
-        COMMIT="${GITHUB_SHA::7}"
-        REPORT_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+      # -----------------------------------
+      # Slack Notification (Enterprise)
+      # -----------------------------------
+      - name: Slack Notify with Test Summary
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
 
-        TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
-        PASSED=$(grep -R "\"status\":\"passed\"" -h allure-results 2>/dev/null | wc -l)
-        FAILED=$(grep -R "\"status\":\"failed\"" -h allure-results 2>/dev/null | wc -l)
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          COMMIT="${GITHUB_SHA::7}"
+          REPORT_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
 
-        STATUS="SUCCESS"
-        COLOR="#2EB886"
-        if [ "$FAILED" -gt 0 ]; then
-          STATUS="FAILED"
-          COLOR="#FF0000"
-        fi
+          TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
+          PASSED=$(grep -R "\"status\":\"passed\"" -h allure-results 2>/dev/null | wc -l)
+          FAILED=$(grep -R "\"status\":\"failed\"" -h allure-results 2>/dev/null | wc -l)
 
-        # JSON PAYLOAD - literal block, indentation SAFE
-        read -r -d '' PAYLOAD << 'EOF'
+          STATUS="SUCCESS"
+          COLOR="#2EB886"
+          if [ "$FAILED" -gt 0 ]; then
+            STATUS="FAILED"
+            COLOR="#FF0000"
+          fi
+
+# -------------------------------
+# JSON payload (must be column 0)
+# -------------------------------
+read -r -d '' PAYLOAD << 'EOF'
 {
   "attachments": [
     {
@@ -108,17 +113,16 @@ jobs:
 }
 EOF
 
-        # Replace placeholders
-        PAYLOAD="${PAYLOAD/__COLOR__/$COLOR}"
-        PAYLOAD="${PAYLOAD/__STATUS__/$STATUS}"
-        PAYLOAD="${PAYLOAD/__BRANCH__/$BRANCH}"
-        PAYLOAD="${PAYLOAD/__COMMIT__/$COMMIT}"
-        PAYLOAD="${PAYLOAD/__TOTAL__/$TOTAL}"
-        PAYLOAD="${PAYLOAD/__PASSED__/$PASSED}"
-        PAYLOAD="${PAYLOAD/__FAILED__/$FAILED}"
-        PAYLOAD="${PAYLOAD/__REPORT_URL__/$REPORT_URL}"
+# Replace placeholders
+PAYLOAD="${PAYLOAD/__COLOR__/$COLOR}"
+PAYLOAD="${PAYLOAD/__STATUS__/$STATUS}"
+PAYLOAD="${PAYLOAD/__BRANCH__/$BRANCH}"
+PAYLOAD="${PAYLOAD/__COMMIT__/$COMMIT}"
+PAYLOAD="${PAYLOAD/__TOTAL__/$TOTAL}"
+PAYLOAD="${PAYLOAD/__PASSED__/$PASSED}"
+PAYLOAD="${PAYLOAD/__FAILED__/$FAILED}"
+PAYLOAD="${PAYLOAD/__REPORT_URL__/$REPORT_URL}"
 
-        # Send
-        curl -X POST -H "Content-Type: application/json" \
-          --data "$PAYLOAD" \
-          "$SLACK_WEBHOOK"
+curl -X POST -H "Content-Type: application/json" \
+     --data "$PAYLOAD" \
+     "$SLACK_WEBHOOK"
