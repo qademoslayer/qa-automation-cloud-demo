@@ -3,122 +3,128 @@ name: Run Pytest + Allure + Publish + Slack
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   tests:
     runs-on: ubuntu-latest
 
     steps:
-      # ---------------------------
-      # Checkout code
-      # ---------------------------
-      - name: Checkout code
-        uses: actions/checkout@v4
+    # ---------------------
+    # 1. Checkout Source Code
+    # ---------------------
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      # ---------------------------
-      # Setup Python
-      # ---------------------------
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+    # ---------------------
+    # 2. Setup Python
+    # ---------------------
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
 
-      # ---------------------------
-      # Install dependencies
-      # ---------------------------
-      - name: Install dependencies
-        run: |
-          python -m pip install -r requirements.txt
-          python -m pip install pytest pytest-playwright allure-pytest
-          playwright install chromium
-      
-      # ---------------------------
-      # Run tests & collect Allure results
-      # ---------------------------
-      - name: Run pytest
-        run: |
-          pytest -s --alluredir=allure-results || true
-      
-      # ---------------------------
-      # Upload allure-results as artifact
-      # ---------------------------
-      - name: Upload Allure results
-        uses: actions/upload-artifact@v4
-        with:
-          name: allure-results
-          path: allure-results
+    # ---------------------
+    # 3. Install Dependencies
+    # ---------------------
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        playwright install --with-deps chromium
 
-      # ---------------------------
-      # Publish Allure report to GH Pages
-      # ---------------------------
-      - name: Deploy Allure Report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        if: always()
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: allure-results
+    # ---------------------
+    # 4. Run Tests
+    # ---------------------
+    - name: Run Pytest + Allure
+      run: |
+        pytest --alluredir=allure-results
 
-      # ---------------------------
-      # Slack Notification (Enterprise Grade)
-      # ---------------------------
-      - name: Slack Notify with Test Summary
-        if: always()
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          BRANCH="${GITHUB_REF#refs/heads/}"
-          COMMIT="${GITHUB_SHA::7}"
-          REPORT_URL="https://qademoslayer.github.io/qa-automation-cloud-demo/"
+    # ---------------------
+    # 5. Upload Allure Results as Artifact
+    # ---------------------
+    - name: Upload Allure Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: allure-results
+        path: allure-results
 
-          TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
-          PASSED=$(grep -R "\"status\":\"passed\"" -h allure-results 2>/dev/null | wc -l)
-          FAILED=$(grep -R "\"status\":\"failed\"" -h allure-results 2>/dev/null | wc -l)
+    # ---------------------
+    # 6. Deploy Allure Report to GitHub Pages
+    # ---------------------
+    - name: Deploy Allure Report
+      uses: simple-elf/allure-report-action@v1.6
+      with:
+        allure_results: allure-results
+        report_folder: allure-report
+        gh_pages: gh-pages
 
-          STATUS="SUCCESS"
-          COLOR="#2EB886"
-          if [ "$FAILED" -gt 0 ]; then
+    # ---------------------
+    # 7. Slack Notification (Enterprise Grade)
+    # ---------------------
+    - name: Slack Notify with Test Summary
+      if: always()
+      env:
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        # -------------------------------------
+        #  Metadata
+        # -------------------------------------
+        BRANCH="${GITHUB_REF#refs/heads/}"
+        COMMIT="${GITHUB_SHA::7}"
+        REPORT_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+
+        TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
+        PASSED=$(grep -R "\"status\":\"passed\"" -h allure-results 2>/dev/null | wc -l)
+        FAILED=$(grep -R "\"status\":\"failed\"" -h allure-results 2>/dev/null | wc -l)
+
+        STATUS="SUCCESS"
+        COLOR="#2EB886"
+        if [ "$FAILED" -gt 0 ]; then
             STATUS="FAILED"
             COLOR="#FF0000"
-          fi
+        fi
 
-          # Build JSON here-doc
-          read -r -d '' PAYLOAD << 'EOF'
-            {
-            "attachments": [
-                {
-                "color": "__COLOR__",
-                "blocks": [
-                    {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "*QA Automation Pipeline — __STATUS__*\n*Branch:* __BRANCH__\n*Commit:* __COMMIT__\n*Total Tests:* __TOTAL__\n*Passed:* __PASSED__\n*Failed:* __FAILED__"
-                    }
-                    },
-                    {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "<__REPORT_URL__|📊 View Allure Report>"
-                    }
-                    }
-                ]
-                }
-            ]
-            }
-            EOF
+        # ------------------------------------------------------------------
+        #  Build Slack JSON Payload (YAML-safe, no indentation issues)
+        # ------------------------------------------------------------------
+        PAYLOAD=$(cat << 'EOF'
+{
+  "attachments": [
+    {
+      "color": "__COLOR__",
+      "blocks": [
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*QA Automation Pipeline — __STATUS__*\n*Branch:* __BRANCH__\n*Commit:* __COMMIT__\n*Total Tests:* __TOTAL__\n*Passed:* __PASSED__\n*Failed:* __FAILED__"
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "<__REPORT_URL__|📊 View Allure Report>"
+          }
+        }
+      ]
+    }
+  ]
+}
+EOF
+)
 
-            # Replace variables
-            PAYLOAD="${PAYLOAD/__COLOR__/$COLOR}"
-            PAYLOAD="${PAYLOAD/__STATUS__/$STATUS}"
-            PAYLOAD="${PAYLOAD/__BRANCH__/$BRANCH}"
-            PAYLOAD="${PAYLOAD/__COMMIT__/$COMMIT}"
-            PAYLOAD="${PAYLOAD/__TOTAL__/$TOTAL}"
-            PAYLOAD="${PAYLOAD/__PASSED__/$PASSED}"
-            PAYLOAD="${PAYLOAD/__FAILED__/$FAILED}"
-            PAYLOAD="${PAYLOAD/__REPORT_URL__/$REPORT_URL}"
+        # Replace placeholders safely
+        PAYLOAD="${PAYLOAD/__COLOR__/$COLOR}"
+        PAYLOAD="${PAYLOAD/__STATUS__/$STATUS}"
+        PAYLOAD="${PAYLOAD/__BRANCH__/$BRANCH}"
+        PAYLOAD="${PAYLOAD/__COMMIT__/$COMMIT}"
+        PAYLOAD="${PAYLOAD/__TOTAL__/$TOTAL}"
+        PAYLOAD="${PAYLOAD/__PASSED__/$PASSED}"
+        PAYLOAD="${PAYLOAD/__FAILED__/$FAILED}"
+        PAYLOAD="${PAYLOAD/__REPORT_URL__/$REPORT_URL}"
 
-            curl -X POST -H "Content-Type: application/json" \
-                --data "$PAYLOAD" \
-                "$SLACK_WEBHOOK"
+        # Send to Slack
+        curl -X POST -H "Content-Type: application/json" \
+          --data "$PAYLOAD" \
+          "$SLACK_WEBHOOK"
