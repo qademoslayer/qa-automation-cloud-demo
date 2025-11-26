@@ -62,7 +62,7 @@ jobs:
       # ---------------------------
       # Slack Notification (Enterprise Grade)
       # ---------------------------
-            - name: Slack Notify with Test Summary
+      - name: Slack Notify with Test Summary
         if: always()
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -71,11 +71,10 @@ jobs:
           COMMIT="${GITHUB_SHA::7}"
           REPORT_URL="https://qademoslayer.github.io/qa-automation-cloud-demo/"
 
-          # Calculate test summary
           TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
           PASSED=$(grep -R "\"status\":\"passed\"" -h allure-results 2>/dev/null | wc -l)
           FAILED=$(grep -R "\"status\":\"failed\"" -h allure-results 2>/dev/null | wc -l)
-
+          
           STATUS="SUCCESS"
           COLOR="#2EB886"
           if [ "$FAILED" -gt 0 ]; then
@@ -83,35 +82,38 @@ jobs:
             COLOR="#FF0000"
           fi
 
-          # Build JSON payload using YAML block scalar |
-          PAYLOAD=$(cat <<'EOF'
-{
-  "attachments": [
-    {
-      "color": "__COLOR__",
-      "blocks": [
-        {
-          "type": "section",
-          "text": {
-            "type": "mrkdwn",
-            "text": "*QA Automation Pipeline — __STATUS__*\n*Branch:* __BRANCH__\n*Commit:* __COMMIT__\n*Total Tests:* __TOTAL__\n*Passed:* __PASSED__\n*Failed:* __FAILED__"
-          }
-        },
-        {
-          "type": "section",
-          "text": {
-            "type": "mrkdwn",
-            "text": "<__REPORT_URL__|📊 View Allure Report>"
-          }
-        }
-      ]
-    }
-  ]
-}
-EOF
-)
-
-          # Replace variables inside JSON
+          # --------------------------------------------
+          # Build JSON payload (MUST start at column 1)
+          # --------------------------------------------
+                    PAYLOAD=$(cat << 'EOF'
+                    {
+                    "attachments": [
+                        {
+                        "color": "__COLOR__",
+                        "blocks": [
+                            {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "*QA Automation Pipeline — __STATUS__*\n*Branch:* __BRANCH__\n*Commit:* __COMMIT__\n*Total Tests:* __TOTAL__\n*Passed:* __PASSED__\n*Failed:* __FAILED__"
+                            }
+                            },
+                            {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "<__REPORT_URL__|📊 View Allure Report>"
+                            }
+                            }
+                        ]
+                        }
+                    ]
+                    }
+                    EOF
+                    )
+          # --------------------------------------------
+          # Replace variables in JSON
+          # --------------------------------------------
           PAYLOAD="${PAYLOAD/__COLOR__/$COLOR}"
           PAYLOAD="${PAYLOAD/__STATUS__/$STATUS}"
           PAYLOAD="${PAYLOAD/__BRANCH__/$BRANCH}"
@@ -122,5 +124,5 @@ EOF
           PAYLOAD="${PAYLOAD/__REPORT_URL__/$REPORT_URL}"
 
           curl -X POST -H "Content-Type: application/json" \
-            --data "$PAYLOAD" \
-            "$SLACK_WEBHOOK"
+               --data "$PAYLOAD" \
+               "$SLACK_WEBHOOK"
