@@ -34,23 +34,13 @@ jobs:
           name: allure-results
           path: allure-results
 
-      - name: Deploy Allure Report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        if: always()
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: allure-results
-          publish_branch: gh-pages
-
-      - name: Slack Notify (Stable Version)
+      - name: Slack Notify (Safe Version)
         if: always()
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           STATUS="SUCCESS"
-          if grep -R "\"status\":\"failed\"" allure-results >/dev/null 2>&1; then
-            STATUS="FAILED"
-          fi
+          if grep -R "\"status\":\"failed\"" allure-results >/dev/null 2>&1; then STATUS="FAILED"; fi
 
           TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
           PASSED=$(grep -R "\"status\":\"passed\"" allure-results | wc -l)
@@ -61,33 +51,8 @@ jobs:
           COLOR="#2eb886"
           if [ "$FAILED" -gt 0 ]; then COLOR="#ff0000"; fi
 
-          PAYLOAD=$(cat <<EOF
-{
-  "attachments": [
-    {
-      "color": "$COLOR",
-      "blocks": [
-        {
-          "type": "section",
-          "text": {
-            "type": "mrkdwn",
-            "text": "*QA Automation Pipeline — $STATUS*\n*Branch:* ${GITHUB_REF#refs/heads/}\n*Commit:* ${GITHUB_SHA::7}\n*Total Tests:* $TOTAL\n*Passed:* $PASSED\n*Failed:* $FAILED"
-          }
-        },
-        {
-          "type": "section",
-          "text": {
-            "type": "mrkdwn",
-            "text": "<$REPORT_URL|📊 View Allure Report>"
-          }
-        }
-      ]
-    }
-  ]
-}
-EOF
-)
+          TEXT="*QA Automation Pipeline — ${STATUS}*\n*Branch:* ${GITHUB_REF#refs/heads/}\n*Commit:* ${GITHUB_SHA::7}\n*Total Tests:* ${TOTAL}\n*Passed:* ${PASSED}\n*Failed:* ${FAILED}\n\n<${REPORT_URL}|📊 View Allure Report>"
 
-          curl -X POST -H 'Content-Type: application/json' \
-            --data "$PAYLOAD" \
+          curl -X POST -H "Content-type: application/json" \
+            --data "{\"attachments\": [{\"color\": \"${COLOR}\", \"blocks\": [{\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"${TEXT}\"}}]}]}" \
             "$SLACK_WEBHOOK"
