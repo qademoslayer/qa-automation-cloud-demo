@@ -1,0 +1,5 @@
+"Status","Start Time","Stop Time","Duration in ms","Parent Suite","Suite","Sub Suite","Test Class","Test Method","Name","Description"
+"passed","Wed Nov 26 07:57:37 UTC 2025","Wed Nov 26 07:57:37 UTC 2025","0","tests.validation","test_html_report","","","","test_generate_html",""
+"passed","Wed Nov 26 07:57:35 UTC 2025","Wed Nov 26 07:57:35 UTC 2025","42","tests.api","test_api_contracts","","","","test_demo_api_status",""
+"passed","Wed Nov 26 07:57:36 UTC 2025","Wed Nov 26 07:57:37 UTC 2025","1253","tests.ui","test_login","","","","test_login_success",""
+"passed","Wed Nov 26 07:57:35 UTC 2025","Wed Nov 26 07:57:35 UTC 2025","0","tests.practice","test_prac","","","","Basic arithmetic sanity test",""
