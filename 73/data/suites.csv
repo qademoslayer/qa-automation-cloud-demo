@@ -1,0 +1,5 @@
+"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
+"","0","test_generate_html","tests.validation","Wed Nov 26 07:13:19 UTC 2025","passed","Wed Nov 26 07:13:19 UTC 2025","","test_html_report","",""
+"","1322","test_login_success","tests.ui","Wed Nov 26 07:13:18 UTC 2025","passed","Wed Nov 26 07:13:19 UTC 2025","","test_login","",""
+"","111","test_demo_api_status","tests.api","Wed Nov 26 07:13:17 UTC 2025","passed","Wed Nov 26 07:13:17 UTC 2025","","test_api_contracts","",""
+"","0","Basic arithmetic sanity test","tests.practice","Wed Nov 26 07:13:17 UTC 2025","passed","Wed Nov 26 07:13:17 UTC 2025","","test_prac","",""
