@@ -7,7 +7,7 @@ def main():
     # 1) Excel -> JSON
     excel_to_json("data/TestData.xlsx", "data/json/cases.json")
 
-    # 2) 运行 pytest + Allure
+    # 2) Run pytest + Allure
     subprocess.run(
         ["pytest", "--alluredir=allure-results"],
         check=False
