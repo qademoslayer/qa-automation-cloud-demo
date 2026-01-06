@@ -59,12 +59,40 @@ jobs:
         run: |
           allure generate allure-results --clean -o allure-report
 
-      # ✅ 关键：发布到 /allure/latest/
       - name: Prepare Pages folder (public/allure/latest)
         if: always()
         run: |
           mkdir -p public/allure/latest
-          cp -r allure-report/* public/allure/latest/
+          test -f allure-report/index.html
+          cp -a allure-report/. public/allure/latest/
+
+      - name: Create root index redirect to latest report
+        if: always()
+        run: |
+          cat > public/index.html <<'EOF'
+          <!doctype html>
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <meta http-equiv="refresh" content="0; url=./allure/latest/" />
+              <title>Allure Report (latest)</title>
+            </head>
+            <body>
+              <p>Redirecting to <a href="./allure/latest/">Allure latest report</a>...</p>
+            </body>
+          </html>
+          EOF
+
+      - name: Debug - list generated files
+        if: always()
+        run: |
+          echo "=== allure-report ==="
+          ls -la allure-report || true
+          echo "=== public tree (first 200 lines) ==="
+          find public -maxdepth 4 -type f | head -n 200 || true
+          echo "=== check index ==="
+          test -f public/allure/latest/index.html && echo "OK: latest index exists" || (echo "MISSING: public/allure/latest/index.html" && exit 2)
+    
 
       - name: Upload report to GitHub Pages
         if: always()
