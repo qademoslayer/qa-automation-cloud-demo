@@ -3,83 +3,115 @@ name: Run Pytest + Allure + Deploy
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   tests:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: Install dependencies
-      run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+          # 确保有 allure pytest 插件（如果 requirements.txt 没有）
+          pip install allure-pytest
 
-    - name: Run Pytest (always continue)
-      run: pytest --alluredir=allure-results || true
+      - name: Install Playwright browsers (chromium)
+        run: |
+          python -m pip install -U playwright
+          python -m playwright install chromium
 
-    # ---------------------------
-    # Install Allure CLI
-    # ---------------------------
-    - name: Install Allure CLI
-      run: |
-        wget https://github.com/allure-framework/allure2/releases/download/2.29.0/allure-2.29.0.tgz
-        tar -xzf allure-2.29.0.tgz
-        sudo mv allure-2.29.0 /opt/allure
-        sudo ln -s /opt/allure/bin/allure /usr/bin/allure
+      - name: Clean old Allure outputs
+        run: |
+          rm -rf allure-results allure-report public
 
-    # ---------------------------
-    # Generate HTML Allure
-    # ---------------------------
-    - name: Generate Allure HTML
-      run: allure generate allure-results -o allure-report --clean
+      # ✅ 不吞失败，但后续步骤继续执行：continue-on-error
+      - name: Run Pytest (generate allure-results)
+        id: pytest
+        continue-on-error: true
+        run: |
+          pytest -q --alluredir=allure-results
 
-    # ---------------------------
-    # Upload report to GitHub Pages
-    # ---------------------------
-    - name: Upload Allure Report
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: allure-report
+      - name: Install Allure CLI
+        run: |
+          wget -q https://github.com/allure-framework/allure2/releases/download/2.29.0/allure-2.29.0.tgz
+          tar -xzf allure-2.29.0.tgz
+          sudo mv allure-2.29.0 /opt/allure
+          sudo ln -sf /opt/allure/bin/allure /usr/local/bin/allure
+          allure --version
 
-    # ---------------------------
-    # Slack Notification (Enterprise)
-    # ---------------------------
-    - name: Notify Slack
-      if: always()
-      env:
-        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-        BRANCH: ${{ github.ref_name }}
-        COMMIT: ${{ github.sha }}
-        REPORT_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
-      run: |
-        TOTAL=$(pytest --collect-only 2>&1 | grep -o "collected [0-9]* items" | awk '{print $2}')
-        PASSED=$(grep -R "\"status\":\"passed\"" -h allure-results 2>/dev/null | wc -l)
-        FAILED=$(grep -R "\"status\":\"failed\"" -h allure-results 2>/dev/null | wc -l)
+      - name: Generate Allure HTML (clean)
+        if: always()
+        run: |
+          allure generate allure-results --clean -o allure-report
 
-        if [ "$FAILED" -gt 0 ]; then
-          STATUS="FAILED"
-          COLOR="#FF0000"
-        else
-          STATUS="SUCCESS"
-          COLOR="#2EB886"
-        fi
+      # ✅ 关键：发布到 /allure/latest/
+      - name: Prepare Pages folder (public/allure/latest)
+        if: always()
+        run: |
+          mkdir -p public/allure/latest
+          cp -r allure-report/* public/allure/latest/
 
-        TEXT="*QA Automation Pipeline — ${STATUS}*\n*Branch:* ${BRANCH}\n*Commit:* ${COMMIT}\n*Total Tests:* ${TOTAL}\n*Passed:* ${PASSED}\n*Failed:* ${FAILED}\n\n📊 <${REPORT_URL}|View Allure Report>"
+      - name: Upload report to GitHub Pages
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
 
-        curl -X POST -H "Content-Type: application/json" \
-          --data "{\"attachments\":[{\"color\":\"${COLOR}\",\"text\":\"${TEXT}\"}]}" \
-          "$SLACK_WEBHOOK"
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          REPORT_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/allure/latest/"
+        run: |
+          if [ -z "$SLACK_WEBHOOK" ]; then
+            echo "SLACK_WEBHOOK_URL not set; skipping."
+            exit 0
+          fi
+
+          # 用 allure-results 统计（不再跑第二次 pytest）
+          PASSED=$(grep -R "\"status\":\"passed\"" -h allure-results 2>/dev/null | wc -l || true)
+          FAILED=$(grep -R "\"status\":\"failed\"" -h allure-results 2>/dev/null | wc -l || true)
+          BROKEN=$(grep -R "\"status\":\"broken\"" -h allure-results 2>/dev/null | wc -l || true)
+          SKIPPED=$(grep -R "\"status\":\"skipped\"" -h allure-results 2>/dev/null | wc -l || true)
+          TOTAL=$((PASSED + FAILED + BROKEN + SKIPPED))
+
+          if [ "$FAILED" -gt 0 ] || [ "$BROKEN" -gt 0 ]; then
+            STATUS="FAILED"
+            COLOR="#FF0000"
+          else
+            STATUS="SUCCESS"
+            COLOR="#2EB886"
+          fi
+
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          TEXT="*QA Automation Pipeline — ${STATUS}*\n*Branch:* ${BRANCH}\n*Commit:* ${COMMIT}\n*Total:* ${TOTAL}\n*Passed:* ${PASSED}\n*Failed:* ${FAILED}\n*Broken:* ${BROKEN}\n*Skipped:* ${SKIPPED}\n\n📊 <${REPORT_URL}|View Allure Report (latest)>\n🧾 <${RUN_URL}|View GitHub Actions Run>"
+
+          curl -X POST -H "Content-Type: application/json" \
+            --data "{\"attachments\":[{\"color\":\"${COLOR}\",\"text\":\"${TEXT}\"}]}" \
+            "$SLACK_WEBHOOK"
+
+      # ✅ 让 job 真实反映 pytest 是否失败（如果你要红灯）
+      - name: Fail job if tests failed
+        if: steps.pytest.outcome == 'failure'
+        run: exit 1
 
   deploy:
     needs: tests
@@ -89,9 +121,8 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
