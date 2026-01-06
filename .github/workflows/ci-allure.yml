@@ -157,18 +157,6 @@ jobs:
             exit 0
           fi
 
-          RESULT_FILES=$(ls allure-results/*-result.json 2>/dev/null | wc -l)
-
-          PASSED=$(grep -R "\"status\":\"passed\"" allure-results/*-result.json | wc -l || true)
-          FAILED=$(grep -R "\"status\":\"failed\"" allure-results/*-result.json | wc -l || true)
-          BROKEN=$(grep -R "\"status\":\"broken\"" allure-results/*-result.json | wc -l || true)
-          SKIPPED=$(grep -R "\"status\":\"skipped\"" allure-results/*-result.json | wc -l || true)
-
-          TOTAL=$((PASSED + FAILED + BROKEN + SKIPPED))
-
-          echo "Allure result json files: $RESULT_FILES"
-          echo "Counts => total=$TOTAL passed=$PASSED failed=$FAILED broken=$BROKEN skipped=$SKIPPED"
-
           if [ "$FAILED" -gt 0 ] || [ "$BROKEN" -gt 0 ]; then
             STATUS="FAILED"
             COLOR="#FF0000"
@@ -185,7 +173,6 @@ jobs:
             --data "{\"attachments\":[{\"color\":\"${COLOR}\",\"text\":\"${TEXT}\"}]}" \
             "$SLACK_WEBHOOK"
 
-
       # ✅ 让 job 真实反映 pytest 是否失败（如果你要红灯）
       - name: Fail job if tests failed
         if: steps.pytest.outcome == 'failure'
@@ -200,8 +187,8 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
