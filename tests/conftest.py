@@ -1,8 +1,11 @@
 import os
 import pytest
 import requests
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 from utils.logger import get_logger
+from pathlib import Path
+STORAGE_STATE = Path(".auth") / "storage_state.json"
+
 
 logger = get_logger()
 
@@ -76,3 +79,50 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
     setattr(item, "rep_" + rep.when, rep)
+
+@pytest.fixture(scope="session")
+def ensure_storage_state(browser, base_url):
+    """
+    只要 storage_state.json 不存在，就执行一次登录并保存状态。
+    """
+    if STORAGE_STATE.exists():
+        return str(STORAGE_STATE)
+
+    STORAGE_STATE.parent.mkdir(parents=True, exist_ok=True)
+
+    user = os.getenv("UI_USER", "demo")
+    pwd = os.getenv("UI_PASS", "demo")
+
+    ctx = browser.new_context(base_url=base_url)
+    page = ctx.new_page()
+
+    page.goto("/login", wait_until="domcontentloaded")
+    page.locator('input[name="username"]').fill(user)
+    page.locator('input[name="password"]').fill(pwd)
+    page.locator('button[type="submit"]').click()
+
+    # 验证登录成功（用稳定元素）
+    expect(page.locator("h1")).to_have_text("Dashboard", timeout=15000)
+
+    # 保存 cookie/localStorage/sessionStorage
+    ctx.storage_state(path=str(STORAGE_STATE))
+
+    page.close()
+    ctx.close()
+
+    return str(STORAGE_STATE)
+
+@pytest.fixture()
+def authed_context(browser, base_url, ensure_storage_state):
+    ctx = browser.new_context(
+        base_url=base_url,
+        storage_state=ensure_storage_state,
+    )
+    yield ctx
+    ctx.close()
+
+@pytest.fixture()
+def authed_page(authed_context):
+    p = authed_context.new_page()
+    yield p
+    p.close()
