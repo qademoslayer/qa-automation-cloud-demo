@@ -13,6 +13,7 @@ STORAGE_STATE = Path(".auth") / "storage_state.json"
 
 logger = get_logger()
 
+#test
 def _ensure_artifact_dirs():
     VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     TRACE_DIR.mkdir(parents=True, exist_ok=True)
