@@ -59,6 +59,14 @@ jobs:
         run: |
           allure generate allure-results --clean -o allure-report
 
+      - name: Sanity check allure report files
+        if: always()
+        run: |
+          echo "index:"
+          ls -la allure-report/index.html
+          echo "data/test-cases count:"
+          ls -1 allure-report/data/test-cases | wc -l
+
       - name: Prepare Pages folder (public/allure/latest)
         if: always()
         run: |
@@ -93,6 +101,10 @@ jobs:
           echo "=== check index ==="
           test -f public/allure/latest/index.html && echo "OK: latest index exists" || (echo "MISSING: public/allure/latest/index.html" && exit 2)
     
+      - name: Add .nojekyll
+        if: always()
+        run: |
+          touch public/.nojekyll
 
       - name: Upload report to GitHub Pages
         if: always()
