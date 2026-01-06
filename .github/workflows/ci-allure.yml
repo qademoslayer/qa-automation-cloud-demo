@@ -109,6 +109,41 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Compute Allure Stats
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, glob, os
+          from collections import Counter
+
+          files = glob.glob("allure-results/*-result.json")
+          c = Counter()
+          for f in files:
+            try:
+              with open(f, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+              c[data.get("status", "unknown")] += 1
+            except Exception:
+              c["unknown"] += 1
+
+          passed = c.get("passed", 0)
+          failed = c.get("failed", 0)
+          broken = c.get("broken", 0)
+          skipped = c.get("skipped", 0)
+          total = passed + failed + broken + skipped
+
+          print("Allure result json files:", len(files))
+          print("Counts => total=%d passed=%d failed=%d broken=%d skipped=%d" % (total, passed, failed, broken, skipped))
+
+          # 写入 GITHUB_ENV 给后续 step 用
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+            env.write(f"TOTAL={total}\n")
+            env.write(f"PASSED={passed}\n")
+            env.write(f"FAILED={failed}\n")
+            env.write(f"BROKEN={broken}\n")
+            env.write(f"SKIPPED={skipped}\n")
+          PY
+
       - name: Notify Slack
         if: always()
         env:
