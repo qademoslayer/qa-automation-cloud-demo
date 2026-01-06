@@ -2,6 +2,7 @@ pytest
 pytest-base-url
 pytest-playwright
 playwright
+python-dateutil
 allure-pytest
 openpyxl
 requests
