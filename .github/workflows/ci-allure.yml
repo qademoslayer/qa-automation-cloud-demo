@@ -122,12 +122,16 @@ jobs:
             exit 0
           fi
 
-          # 用 allure-results 统计（不再跑第二次 pytest）
-          PASSED=$(grep -R "\"status\":\"passed\"" -h allure-results 2>/dev/null | wc -l || true)
-          FAILED=$(grep -R "\"status\":\"failed\"" -h allure-results 2>/dev/null | wc -l || true)
-          BROKEN=$(grep -R "\"status\":\"broken\"" -h allure-results 2>/dev/null | wc -l || true)
-          SKIPPED=$(grep -R "\"status\":\"skipped\"" -h allure-results 2>/dev/null | wc -l || true)
+          RESULT_FILES=$(ls -1 allure-results/*-result.json 2>/dev/null | wc -l || true)
+
+          PASSED=$(grep -R "\"status\":\"passed\""  allure-results/*-result.json 2>/dev/null | wc -l || true)
+          FAILED=$(grep -R "\"status\":\"failed\""  allure-results/*-result.json 2>/dev/null | wc -l || true)
+          BROKEN=$(grep -R "\"status\":\"broken\""  allure-results/*-result.json 2>/dev/null | wc -l || true)
+          SKIPPED=$(grep -R "\"status\":\"skipped\"" allure-results/*-result.json 2>/dev/null | wc -l || true)
           TOTAL=$((PASSED + FAILED + BROKEN + SKIPPED))
+
+          echo "Allure result json files: $RESULT_FILES"
+          echo "Counts => total=$TOTAL passed=$PASSED failed=$FAILED broken=$BROKEN skipped=$SKIPPED"
 
           if [ "$FAILED" -gt 0 ] || [ "$BROKEN" -gt 0 ]; then
             STATUS="FAILED"
@@ -144,6 +148,7 @@ jobs:
           curl -X POST -H "Content-Type: application/json" \
             --data "{\"attachments\":[{\"color\":\"${COLOR}\",\"text\":\"${TEXT}\"}]}" \
             "$SLACK_WEBHOOK"
+
 
       # ✅ 让 job 真实反映 pytest 是否失败（如果你要红灯）
       - name: Fail job if tests failed
