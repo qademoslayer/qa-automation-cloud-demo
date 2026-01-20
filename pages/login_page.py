@@ -1,5 +1,6 @@
 from pages.base_page import BasePage
 
+# test
 class LoginPage(BasePage):
 
     username_input = "#username"
